@@ -3,9 +3,9 @@
  */
 /* Default settings; can be overrided by command line. */
 
-static Bool topbar = False;                  /* -b  option; if False, dmenu appears at bottom */
-static const char *font = "Inconsolata-13:lcdfilter=lcddefault:hintstyle=hintfull:hinting=full:antialias=true:autohint=false";             /* -fn option; default X11 font or font set      */
-static const char *prompt = "Search:";           /* -p  option; prompt to the elft of input field */
+static Bool topbar = True;                  /* -b  option; if False, dmenu appears at bottom */
+static const char *font = NULL;             /* -fn option; default X11 font or font set      */
+static const char *prompt = NULL;           /* -p  option; prompt to the elft of input field */
 static const char *normbgcolor = "#222222"; /* -nb option; normal background                 */
 static const char *normfgcolor = "#bbbbbb"; /* -nf option; normal foreground                 */
 static const char *selbgcolor  = "#005577"; /* -sb option; selected background               */

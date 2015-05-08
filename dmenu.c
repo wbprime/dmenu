@@ -17,7 +17,6 @@
                              * MAX(0, MIN((y)+(h),(r).y_org+(r).height) - MAX((y),(r).y_org)))
 #define MIN(a,b)              ((a) < (b) ? (a) : (b))
 #define MAX(a,b)              ((a) > (b) ? (a) : (b))
-#define DEFFONT "fixed" /* xft example: "Monospace-11" */
 
 typedef struct Item Item;
 struct Item {
@@ -28,7 +27,6 @@ struct Item {
 
 static void appenditem(Item *item, Item **list, Item **last);
 static void calcoffsets(void);
-static void cleanup(void);
 static char *cistrstr(const char *s, const char *sub);
 static void drawmenu(void);
 static void grabkeyboard(void);
@@ -46,9 +44,9 @@ static char text[BUFSIZ] = "";
 static int bh, mw, mh;
 static int inputw, promptw;
 static size_t cursor = 0;
-static ColorSet *normcol;
-static ColorSet *selcol;
-static ColorSet *outcol;
+static unsigned long normcol[ColLast];
+static unsigned long selcol[ColLast];
+static unsigned long outcol[ColLast];
 static Atom clip, utf8;
 static DC *dc;
 static Item *items = NULL;
@@ -57,8 +55,6 @@ static Item *prev, *curr, *next, *sel;
 static Window win;
 static XIC xic;
 static int mon = -1;
-static Bool running = True;
-static int ret = EXIT_SUCCESS;
 
 #include "config.h"
 
@@ -107,10 +103,7 @@ main(int argc, char *argv[]) {
 			usage();
 
 	dc = initdc();
-	initfont(dc, font ? font : DEFFONT);
-	normcol = initcolor(dc, normfgcolor, normbgcolor);
-	selcol = initcolor(dc, selfgcolor, selbgcolor);
-	outcol = initcolor(dc, outfgcolor, outbgcolor);
+	initfont(dc, font);
 
 	if(fast) {
 		grabkeyboard();
@@ -123,8 +116,7 @@ main(int argc, char *argv[]) {
 	setup();
 	run();
 
-	cleanup();
-	return ret;
+	return 1; /* unreachable */
 }
 
 void
@@ -167,15 +159,6 @@ cistrstr(const char *s, const char *sub) {
 }
 
 void
-cleanup(void) {
-	freecol(dc, normcol);
-	freecol(dc, selcol);
-	XDestroyWindow(dc->dpy, win);
-	XUngrabKeyboard(dc->dpy, CurrentTime);
-	freedc(dc);
-}
-
-void
 drawmenu(void) {
 	int curpos;
 	Item *item;
@@ -183,7 +166,7 @@ drawmenu(void) {
 	dc->x = 0;
 	dc->y = 0;
 	dc->h = bh;
-	drawrect(dc, 0, 0, mw, mh, True, normcol->BG);
+	drawrect(dc, 0, 0, mw, mh, True, BG(dc, normcol));
 
 	if(prompt && *prompt) {
 		dc->w = promptw;
@@ -194,7 +177,7 @@ drawmenu(void) {
 	dc->w = (lines > 0 || !matches) ? mw - dc->x : inputw;
 	drawtext(dc, text, normcol);
 	if((curpos = textnw(dc, text, cursor) + dc->h/2 - 2) < dc->w)
-		drawrect(dc, curpos, 2, 1, dc->h - 4, True, normcol->FG);
+		drawrect(dc, curpos, 2, 1, dc->h - 4, True, FG(dc, normcol));
 
 	if(lines > 0) {
 		/* draw vertical list */
@@ -298,12 +281,9 @@ keypress(XKeyEvent *ev) {
 			return;
 		case XK_Return:
 		case XK_KP_Enter:
-			ret = EXIT_SUCCESS;
-			running = False;
 			break;
 		case XK_bracketleft:
-			ret = EXIT_FAILURE;
-			running = False;
+			exit(EXIT_FAILURE);
 		default:
 			return;
 		}
@@ -350,8 +330,7 @@ keypress(XKeyEvent *ev) {
 		sel = matchend;
 		break;
 	case XK_Escape:
-		ret = EXIT_FAILURE;
-		running = False;
+		exit(EXIT_FAILURE);
 	case XK_Home:
 		if(sel == matches) {
 			cursor = 0;
@@ -389,10 +368,8 @@ keypress(XKeyEvent *ev) {
 	case XK_Return:
 	case XK_KP_Enter:
 		puts((sel && !(ev->state & ShiftMask)) ? sel->text : text);
-		if(!(ev->state & ControlMask)) {
-			ret = EXIT_SUCCESS;
-			running = False;
-		}
+		if(!(ev->state & ControlMask))
+			exit(EXIT_SUCCESS);
 		if(sel)
 			sel->out = True;
 		break;
@@ -528,7 +505,7 @@ void
 run(void) {
 	XEvent ev;
 
-	while(running && !XNextEvent(dc->dpy, &ev)) {
+	while(!XNextEvent(dc->dpy, &ev)) {
 		if(XFilterEvent(&ev, win))
 			continue;
 		switch(ev.type) {
@@ -561,6 +538,13 @@ setup(void) {
 	int n;
 	XineramaScreenInfo *info;
 #endif
+
+	normcol[ColBG] = getcolor(dc, normbgcolor);
+	normcol[ColFG] = getcolor(dc, normfgcolor);
+	selcol[ColBG]  = getcolor(dc, selbgcolor);
+	selcol[ColFG]  = getcolor(dc, selfgcolor);
+	outcol[ColBG]  = getcolor(dc, outbgcolor);
+	outcol[ColFG]  = getcolor(dc, outfgcolor);
 
 	clip = XInternAtom(dc->dpy, "CLIPBOARD",   False);
 	utf8 = XInternAtom(dc->dpy, "UTF8_STRING", False);
@@ -617,7 +601,7 @@ setup(void) {
 
 	/* create menu window */
 	swa.override_redirect = True;
-	swa.background_pixel = normcol->BG;
+	swa.background_pixel = normcol[ColBG];
 	swa.event_mask = ExposureMask | KeyPressMask | VisibilityChangeMask;
 	win = XCreateWindow(dc->dpy, root, x, y, mw, mh, 0,
 	                    DefaultDepth(dc->dpy, screen), CopyFromParent,
