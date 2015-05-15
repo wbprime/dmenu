@@ -13,5 +13,5 @@ static const char *selfgcolor  = "#eeeeee"; /* -sf option; selected foreground  
 static const char *outbgcolor  = "#00ffff";
 static const char *outfgcolor  = "#000000";
 /* -l option; if nonzero, dmenu uses vertical list with given number of lines */
-static unsigned int lines = 0;
+static unsigned int lines = 9;
 
