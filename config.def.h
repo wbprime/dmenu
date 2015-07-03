@@ -6,9 +6,9 @@
 static Bool topbar = True;                  /* -b  option; if False, dmenu appears at bottom */
 /* -fn option overrides fonts[0]; default X11 font or font set */
 static const char *fonts[] = {
-	"monospace:size=10"
+	"Monospace:size=12"
 };
-static const char *prompt      = NULL;      /* -p  option; prompt to the elft of input field */
+static const char *prompt      = "[Search]";      /* -p  option; prompt to the elft of input field */
 static const char *normbgcolor = "#222222"; /* -nb option; normal background                 */
 static const char *normfgcolor = "#bbbbbb"; /* -nf option; normal foreground                 */
 static const char *selbgcolor  = "#005577"; /* -sb option; selected background               */
