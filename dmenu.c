@@ -6,6 +6,7 @@
 #include <string.h>
 #include <strings.h>
 #include <time.h>
+#include <unistd.h>
 
 #include <X11/Xlib.h>
 #include <X11/Xatom.h>
@@ -145,7 +146,7 @@ drawmenu(void)
 	drw_setscheme(drw, scheme[SchemeNorm]);
 	drw_text(drw, x, 0, w, bh, lrpad / 2, text, 0);
 
-	drw_font_getexts(drw->fonts, text, cursor, &curpos, NULL);
+	curpos = TEXTW(text) - TEXTW(&text[cursor]);
 	if ((curpos += lrpad / 2 - 1) < w) {
 		drw_setscheme(drw, scheme[SchemeNorm]);
 		drw_rect(drw, x + curpos, 2, 2, bh - 4, 1, 0);
@@ -387,13 +388,21 @@ keypress(XKeyEvent *ev)
 {
 	char buf[32];
 	int len;
-	KeySym ksym = NoSymbol;
+	KeySym ksym;
 	Status status;
 
 	len = XmbLookupString(xic, ev, buf, sizeof buf, &ksym, &status);
-	if (status == XBufferOverflow)
+	switch (status) {
+	default: /* XLookupNone, XBufferOverflow */
 		return;
-	if (ev->state & ControlMask)
+	case XLookupChars:
+		goto insert;
+	case XLookupKeySym:
+	case XLookupBoth:
+		break;
+	}
+
+	if (ev->state & ControlMask) {
 		switch(ksym) {
 		case XK_a: ksym = XK_Home;      break;
 		case XK_b: ksym = XK_Left;      break;
@@ -431,12 +440,10 @@ keypress(XKeyEvent *ev)
 			return;
 		case XK_Left:
 			movewordedge(-1);
-			ksym = NoSymbol;
-			break;
+			goto draw;
 		case XK_Right:
 			movewordedge(+1);
-			ksym = NoSymbol;
-			break;
+			goto draw;
 		case XK_Return:
 		case XK_KP_Enter:
 			break;
@@ -446,16 +453,14 @@ keypress(XKeyEvent *ev)
 		default:
 			return;
 		}
-	else if (ev->state & Mod1Mask)
+	} else if (ev->state & Mod1Mask) {
 		switch(ksym) {
 		case XK_b:
 			movewordedge(-1);
-			ksym = NoSymbol;
-			break;
+			goto draw;
 		case XK_f:
 			movewordedge(+1);
-			ksym = NoSymbol;
-			break;
+			goto draw;
 		case XK_g: ksym = XK_Home;  break;
 		case XK_G: ksym = XK_End;   break;
 		case XK_h: ksym = XK_Up;    break;
@@ -465,12 +470,13 @@ keypress(XKeyEvent *ev)
 		default:
 			return;
 		}
+	}
+
 	switch(ksym) {
 	default:
+insert:
 		if (!iscntrl(*buf))
 			insert(buf, len);
-		break;
-	case NoSymbol:
 		break;
 	case XK_Delete:
 		if (text[cursor] == '\0')
@@ -568,6 +574,8 @@ keypress(XKeyEvent *ev)
 		fuzzymatch();
 		break;
 	}
+
+draw:
 	drawmenu();
 }
 
@@ -627,6 +635,11 @@ run(void)
 		if (XFilterEvent(&ev, win))
 			continue;
 		switch(ev.type) {
+		case DestroyNotify:
+			if (ev.xdestroywindow.window != win)
+				break;
+			cleanup();
+			exit(1);
 		case Expose:
 			if (ev.xexpose.count == 0)
 				drw_map(drw, win, 0, 0, mw, mh);
@@ -730,14 +743,17 @@ setup(void)
 	                    CWOverrideRedirect | CWBackPixel | CWEventMask, &swa);
 	XSetClassHint(dpy, win, &ch);
 
-	/* open input methods */
-	xim = XOpenIM(dpy, NULL, NULL, NULL);
+
+	/* input methods */
+	if ((xim = XOpenIM(dpy, NULL, NULL, NULL)) == NULL)
+		die("XOpenIM failed: could not open input device");
+
 	xic = XCreateIC(xim, XNInputStyle, XIMPreeditNothing | XIMStatusNothing,
 	                XNClientWindow, win, XNFocusWindow, win, NULL);
 
 	XMapRaised(dpy, win);
 	if (embed) {
-		XSelectInput(dpy, parentwin, FocusChangeMask);
+		XSelectInput(dpy, parentwin, FocusChangeMask | SubstructureNotifyMask);
 		if (XQueryTree(dpy, parentwin, &dw, &w, &dws, &du) && dws) {
 			for (i = 0; i < du && dws[i] != win; ++i)
 				XSelectInput(dpy, dws[i], FocusChangeMask);
@@ -815,7 +831,12 @@ main(int argc, char *argv[])
 		die("no fonts could be loaded.");
 	lrpad = drw->fonts->h;
 
-	if (fast) {
+#ifdef __OpenBSD__
+	if (pledge("stdio rpath", NULL) == -1)
+		die("pledge");
+#endif
+
+	if (fast && !isatty(0)) {
 		grabkeyboard();
 		readstdin();
 	} else {
